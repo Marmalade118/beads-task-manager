@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -242,5 +243,382 @@ func TestAllSettings(t *testing.T) {
 	// Check that our custom key is in the settings
 	if val, ok := settings["custom-key"]; !ok || val != "custom-value" {
 		t.Errorf("AllSettings() missing or incorrect custom-key: got %v", val)
+	}
+}
+
+// TestSetIssuePrefixEmptyConfig tests SetIssuePrefix with an empty config.yaml file
+func TestSetIssuePrefixEmptyConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create .beads directory: %v", err)
+	}
+
+	// Create empty config.yaml
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatalf("failed to create empty config file: %v", err)
+	}
+
+	// Change to tmp directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Set issue prefix
+	if err := SetIssuePrefix("test"); err != nil {
+		t.Fatalf("SetIssuePrefix() returned error: %v", err)
+	}
+
+	// Verify file was updated
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config file: %v", err)
+	}
+
+	expected := `issue-prefix: "test"`
+	contentStr := string(content)
+	if !strings.Contains(contentStr, expected) {
+		t.Errorf("config file content = %q, want to contain %q", contentStr, expected)
+	}
+
+	// Verify in-memory config was updated
+	if err := Initialize(); err != nil {
+		t.Fatalf("Re-initialize returned error: %v", err)
+	}
+	
+	if got := GetIssuePrefix(); got != "test" {
+		t.Errorf("GetIssuePrefix() = %q, want \"test\"", got)
+	}
+}
+
+// TestSetIssuePrefixExistingConfig tests SetIssuePrefix with existing config.yaml (preserves other settings)
+func TestSetIssuePrefixExistingConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create .beads directory: %v", err)
+	}
+
+	// Create config.yaml with existing settings
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	existingConfig := `# My config
+json: true
+actor: testuser
+# Some comment
+`
+	if err := os.WriteFile(configPath, []byte(existingConfig), 0644); err != nil {
+		t.Fatalf("failed to create config file: %v", err)
+	}
+
+	// Change to tmp directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Set issue prefix
+	if err := SetIssuePrefix("bd"); err != nil {
+		t.Fatalf("SetIssuePrefix() returned error: %v", err)
+	}
+
+	// Verify file was updated and other settings preserved
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config file: %v", err)
+	}
+
+	contentStr := string(content)
+	
+	// Check that issue-prefix was added
+	if !strings.Contains(contentStr, `issue-prefix: "bd"`) {
+		t.Errorf("config file doesn't contain issue-prefix: %q", contentStr)
+	}
+	
+	// Check that existing settings are preserved
+	if !strings.Contains(contentStr, "json: true") {
+		t.Errorf("config file lost json setting: %q", contentStr)
+	}
+	if !strings.Contains(contentStr, "actor: testuser") {
+		t.Errorf("config file lost actor setting: %q", contentStr)
+	}
+	if !strings.Contains(contentStr, "# My config") {
+		t.Errorf("config file lost comment: %q", contentStr)
+	}
+}
+
+// TestSetIssuePrefixUpdateExisting tests SetIssuePrefix when issue-prefix already exists
+func TestSetIssuePrefixUpdateExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create .beads directory: %v", err)
+	}
+
+	// Create config.yaml with existing issue-prefix
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	existingConfig := `issue-prefix: "old"
+json: true
+`
+	if err := os.WriteFile(configPath, []byte(existingConfig), 0644); err != nil {
+		t.Fatalf("failed to create config file: %v", err)
+	}
+
+	// Change to tmp directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Update issue prefix
+	if err := SetIssuePrefix("new"); err != nil {
+		t.Fatalf("SetIssuePrefix() returned error: %v", err)
+	}
+
+	// Verify file was updated
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config file: %v", err)
+	}
+
+	contentStr := string(content)
+	
+	// Check that issue-prefix was updated
+	if !strings.Contains(contentStr, `issue-prefix: "new"`) {
+		t.Errorf("config file doesn't contain updated issue-prefix: %q", contentStr)
+	}
+	
+	// Check that old prefix is gone
+	if strings.Contains(contentStr, `issue-prefix: "old"`) {
+		t.Errorf("config file still contains old issue-prefix: %q", contentStr)
+	}
+	
+	// Check that other settings are preserved
+	if !strings.Contains(contentStr, "json: true") {
+		t.Errorf("config file lost json setting: %q", contentStr)
+	}
+}
+
+// TestSetIssuePrefixCommented tests SetIssuePrefix with commented issue-prefix line
+func TestSetIssuePrefixCommented(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create .beads directory: %v", err)
+	}
+
+	// Create config.yaml with commented issue-prefix
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	existingConfig := `# issue-prefix: "commented"
+json: true
+`
+	if err := os.WriteFile(configPath, []byte(existingConfig), 0644); err != nil {
+		t.Fatalf("failed to create config file: %v", err)
+	}
+
+	// Change to tmp directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Set issue prefix
+	if err := SetIssuePrefix("active"); err != nil {
+		t.Fatalf("SetIssuePrefix() returned error: %v", err)
+	}
+
+	// Verify file was updated
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config file: %v", err)
+	}
+
+	contentStr := string(content)
+	
+	// Check that active issue-prefix was added (not updating comment)
+	if !strings.Contains(contentStr, `issue-prefix: "active"`) {
+		t.Errorf("config file doesn't contain active issue-prefix: %q", contentStr)
+	}
+	
+	// Check that comment is preserved
+	if !strings.Contains(contentStr, `# issue-prefix: "commented"`) {
+		t.Errorf("config file lost commented line: %q", contentStr)
+	}
+}
+
+// TestSetIssuePrefixNoBeadsDir tests SetIssuePrefix when .beads directory doesn't exist
+func TestSetIssuePrefixNoBeadsDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Change to tmp directory (no .beads subdirectory)
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Set issue prefix should succeed but only update in-memory
+	if err := SetIssuePrefix("test"); err != nil {
+		t.Fatalf("SetIssuePrefix() returned error: %v", err)
+	}
+
+	// Verify in-memory config was updated
+	if got := GetIssuePrefix(); got != "test" {
+		t.Errorf("GetIssuePrefix() = %q, want \"test\"", got)
+	}
+
+	// Verify no config file was created
+	configPath := filepath.Join(tmpDir, ".beads", "config.yaml")
+	if _, err := os.Stat(configPath); err == nil {
+		t.Errorf("config file was created when it shouldn't exist")
+	}
+}
+
+// TestSetIssuePrefixEmptyPrefix tests SetIssuePrefix with empty prefix (should fail)
+func TestSetIssuePrefixEmptyPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create .beads directory: %v", err)
+	}
+
+	// Change to tmp directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+	
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
+
+	// Initialize config
+	if err := Initialize(); err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+
+	// Set empty issue prefix should fail
+	err = SetIssuePrefix("")
+	if err == nil {
+		t.Error("SetIssuePrefix(\"\") should return error")
+	}
+}
+
+// TestGetIssuePrefixFallback tests GetIssuePrefix with various config states
+func TestGetIssuePrefixFallback(t *testing.T) {
+	tests := []struct {
+		name           string
+		configContent  string
+		expectedPrefix string
+	}{
+		{
+			name:           "prefix set",
+			configContent:  `issue-prefix: "bd"`,
+			expectedPrefix: "bd",
+		},
+		{
+			name:           "prefix not set",
+			configContent:  `json: true`,
+			expectedPrefix: "",
+		},
+		{
+			name:           "empty config",
+			configContent:  ``,
+			expectedPrefix: "",
+		},
+		{
+			name:           "prefix with quotes",
+			configContent:  `issue-prefix: "test-prefix"`,
+			expectedPrefix: "test-prefix",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			beadsDir := filepath.Join(tmpDir, ".beads")
+			if err := os.MkdirAll(beadsDir, 0755); err != nil {
+				t.Fatalf("failed to create .beads directory: %v", err)
+			}
+
+			// Create config.yaml
+			configPath := filepath.Join(beadsDir, "config.yaml")
+			if err := os.WriteFile(configPath, []byte(tt.configContent), 0644); err != nil {
+				t.Fatalf("failed to create config file: %v", err)
+			}
+
+			// Change to tmp directory
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("failed to get working directory: %v", err)
+			}
+			defer os.Chdir(origDir)
+			
+			if err := os.Chdir(tmpDir); err != nil {
+				t.Fatalf("failed to change directory: %v", err)
+			}
+
+			// Initialize config
+			if err := Initialize(); err != nil {
+				t.Fatalf("Initialize() returned error: %v", err)
+			}
+
+			// Get issue prefix
+			got := GetIssuePrefix()
+			if got != tt.expectedPrefix {
+				t.Errorf("GetIssuePrefix() = %q, want %q", got, tt.expectedPrefix)
+			}
+		})
 	}
 }

@@ -187,6 +187,66 @@ func TestInitCommand(t *testing.T) {
 // Note: Error case testing is omitted because the init command calls os.Exit()
 // on errors, which makes it difficult to test in a unit test context.
 
+// TestInitWritesToConfigYAML tests that bd init writes issue-prefix to config.yaml
+func TestInitWritesToConfigYAML(t *testing.T) {
+	// Reset global state
+	origDBPath := dbPath
+	defer func() { dbPath = origDBPath }()
+	dbPath = ""
+	
+	// Reset Cobra command state
+	rootCmd.SetArgs([]string{})
+	initCmd.Flags().Set("prefix", "")
+	initCmd.Flags().Set("quiet", "false")
+
+	tmpDir := t.TempDir()
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+
+	// Run init with custom prefix
+	rootCmd.SetArgs([]string{"init", "--prefix", "test-prefix", "--quiet"})
+
+	err = rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("init command failed: %v", err)
+	}
+
+	// Verify config.yaml was created
+	configPath := filepath.Join(tmpDir, ".beads", "config.yaml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("config.yaml was not created")
+	}
+
+	// Verify config.yaml contains issue-prefix
+	configContent, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to read config.yaml: %v", err)
+	}
+
+	configStr := string(configContent)
+	if !strings.Contains(configStr, `issue-prefix: "test-prefix"`) {
+		t.Errorf("config.yaml doesn't contain expected issue-prefix: %s", configStr)
+	}
+
+	// Verify database was also created and prefix is accessible
+	dbPath := filepath.Join(tmpDir, ".beads", "beads.db")
+	store, err := openExistingTestDB(t, dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer store.Close()
+
+	// Note: The prefix is now in config.yaml, not DB
+	// The important check is that config.yaml has it (verified above)
+}
+
 func TestInitAlreadyInitialized(t *testing.T) {
 	// Reset global state
 	origDBPath := dbPath

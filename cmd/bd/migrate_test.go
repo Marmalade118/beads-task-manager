@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/storage/sqlite"
 )
 
@@ -173,5 +175,81 @@ func TestMigrateRespectsConfigJSON(t *testing.T) {
 	// Verify database exists at custom path
 	if _, err := os.Stat(actualPath); os.IsNotExist(err) {
 		t.Errorf("Database does not exist at custom path: %s", actualPath)
+	}
+}
+
+// TestMigrateConfigToYAMLIntegration tests that bd migrate migrates issue_prefix to config.yaml
+func TestMigrateConfigToYAMLIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("Failed to create .beads directory: %v", err)
+	}
+
+	// Change to temp directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+
+	// Create empty config.yaml FIRST (simulating upgrade scenario)
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create config.yaml: %v", err)
+	}
+
+	// Initialize config to pick up the empty config.yaml
+	// (This must happen before database open to ensure migration can write to it)
+	if err := config.Initialize(); err != nil {
+		t.Fatalf("Failed to initialize config: %v", err)
+	}
+
+	// Create v0.21 style database with issue_prefix in DB
+	dbPath := filepath.Join(beadsDir, "beads.db")
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+
+	ctx := context.Background()
+	
+	// Set issue_prefix in DB (old way)
+	if err := store.SetConfig(ctx, "issue_prefix", "old-prefix"); err != nil {
+		t.Fatalf("Failed to set issue_prefix in DB: %v", err)
+	}
+
+	// Set version to simulate old database
+	if err := store.SetMetadata(ctx, "bd_version", "0.21.0"); err != nil {
+		t.Fatalf("Failed to set version: %v", err)
+	}
+
+	// Close and re-open to trigger migration
+	_ = store.Close()
+
+	store, err = sqlite.New(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to re-open database: %v", err)
+	}
+	defer store.Close()
+
+	// The MigrateConfigToYAML should be called automatically on DB open
+	// Give it a moment to complete
+	
+	// Verify config.yaml now has issue-prefix
+	configContent, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to read config.yaml: %v", err)
+	}
+
+	configStr := string(configContent)
+
+	// The migration should have written issue-prefix to config.yaml
+	if !strings.Contains(configStr, `issue-prefix: "old-prefix"`) {
+		t.Errorf("config.yaml should contain migrated prefix, got: %s", configStr)
 	}
 }
