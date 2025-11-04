@@ -178,6 +178,11 @@ func GetIssuePrefix() string {
 // This is the source of truth for the project's issue prefix
 // In environments without .beads directory, updates viper in-memory only
 func SetIssuePrefix(prefix string) error {
+	// Validate prefix (basic check - actual validation in types.Issue)
+	if prefix == "" {
+		return fmt.Errorf("issue prefix cannot be empty")
+	}
+
 	// Find the .beads directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -208,11 +213,18 @@ func SetIssuePrefix(prefix string) error {
 	}
 
 	// Update or add issue-prefix line
-	lines := strings.Split(content, "\n")
+	// Note: This is a simple line-based approach. It preserves comments and formatting
+	// but may not handle all YAML edge cases. For most users, this is sufficient.
+	lines := []string{}
+	if content != "" {
+		lines = strings.Split(content, "\n")
+	}
+	
 	found := false
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "issue-prefix:") {
+		// Match "issue-prefix:" at start of line (ignoring whitespace and comments)
+		if strings.HasPrefix(trimmed, "issue-prefix:") && !strings.HasPrefix(trimmed, "#") {
 			lines[i] = fmt.Sprintf("issue-prefix: %q", prefix)
 			found = true
 			break
@@ -221,14 +233,23 @@ func SetIssuePrefix(prefix string) error {
 
 	if !found {
 		// Add issue-prefix to beginning of file
-		lines = append([]string{fmt.Sprintf("issue-prefix: %q", prefix), ""}, lines...)
+		if len(lines) > 0 {
+			lines = append([]string{fmt.Sprintf("issue-prefix: %q", prefix), ""}, lines...)
+		} else {
+			lines = []string{fmt.Sprintf("issue-prefix: %q", prefix)}
+		}
 	}
 
 	content = strings.Join(lines, "\n")
 
-	// Write back to file
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write config.yaml: %w", err)
+	// Write back to file atomically using temp file + rename
+	tmpPath := configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write temp config file: %w", err)
+	}
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		_ = os.Remove(tmpPath) // Clean up temp file
+		return fmt.Errorf("failed to update config.yaml: %w", err)
 	}
 
 	// Update in-memory config too

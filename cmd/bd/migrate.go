@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/beads"
 	"github.com/steveyegge/beads/internal/config"
@@ -17,8 +19,6 @@ import (
 	"github.com/steveyegge/beads/internal/storage/sqlite"
 	"github.com/steveyegge/beads/internal/types"
 	"github.com/steveyegge/beads/internal/utils"
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 var migrateCmd = &cobra.Command{
@@ -56,33 +56,33 @@ This command:
 		// Find .beads directory
 		beadsDir := findBeadsDir()
 		if beadsDir == "" {
-		if jsonOutput {
-		outputJSON(map[string]interface{}{
-		"error":   "no_beads_directory",
-		"message": "No .beads directory found. Run 'bd init' first.",
-		})
-		} else {
-		fmt.Fprintf(os.Stderr, "Error: no .beads directory found\n")
-		fmt.Fprintf(os.Stderr, "Hint: run 'bd init' to initialize bd\n")
-		}
-		os.Exit(1)
+			if jsonOutput {
+				outputJSON(map[string]interface{}{
+					"error":   "no_beads_directory",
+					"message": "No .beads directory found. Run 'bd init' first.",
+				})
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: no .beads directory found\n")
+				fmt.Fprintf(os.Stderr, "Hint: run 'bd init' to initialize bd\n")
+			}
+			os.Exit(1)
 		}
 
 		// Load config to get target database name (respects user's config.json)
-	cfg, err := loadOrCreateConfig(beadsDir)
-	if err != nil {
-		if jsonOutput {
-			outputJSON(map[string]interface{}{
-				"error":   "config_load_failed",
-				"message": err.Error(),
-			})
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)
+		cfg, err := loadOrCreateConfig(beadsDir)
+		if err != nil {
+			if jsonOutput {
+				outputJSON(map[string]interface{}{
+					"error":   "config_load_failed",
+					"message": err.Error(),
+				})
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)
+			}
+			os.Exit(1)
 		}
-		os.Exit(1)
-	}
 
-	// Detect all database files
+		// Detect all database files
 		databases, err := detectDatabases(beadsDir)
 		if err != nil {
 			if jsonOutput {
@@ -186,7 +186,7 @@ This command:
 			} else {
 				fmt.Println("Dry run mode - no changes will be made")
 				if needsMigration {
-				fmt.Printf("Would migrate: %s → %s\n", filepath.Base(oldDBs[0].path), cfg.Database)
+					fmt.Printf("Would migrate: %s → %s\n", filepath.Base(oldDBs[0].path), cfg.Database)
 				}
 				if needsVersionUpdate {
 					fmt.Printf("Would update version: %s → %s\n", currentDB.version, Version)
@@ -272,50 +272,50 @@ This command:
 			}
 
 			ctx := context.Background()
-			
+
 			// Migrate issue_prefix from DB to config.yaml (fixes GH #201 + #209)
 			// Config.yaml is now the single source of truth
 			configPrefix := config.GetIssuePrefix()
 			dbPrefix, _ := store.GetConfig(ctx, "issue_prefix")
-			
+
 			if configPrefix == "" {
-			// config.yaml missing prefix - try to migrate from DB or detect from issues
-			var detectedPrefix string
-			
-			if dbPrefix != "" {
-			// Migrate from DB to config.yaml
-			detectedPrefix = dbPrefix
-			} else {
-			// Detect from existing issues
-			issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
-			if err == nil && len(issues) > 0 {
-			detectedPrefix = utils.ExtractIssuePrefix(issues[0].ID)
-			}
-			}
-			
-			if detectedPrefix != "" {
-			if err := config.SetIssuePrefix(detectedPrefix); err != nil {
-			_ = store.Close()
-			 if jsonOutput {
-			   outputJSON(map[string]interface{}{
-			     "error":   "prefix_migration_failed",
-							"message": err.Error(),
-						})
-					} else {
-						fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix in config.yaml: %v\n", err)
-					}
-					os.Exit(1)
-				}
-				if !jsonOutput {
-					if dbPrefix != "" {
-						color.Green("✓ Migrated issue prefix to config.yaml: %s\n", detectedPrefix)
-					} else {
-						color.Green("✓ Detected and set issue prefix: %s\n", detectedPrefix)
+				// config.yaml missing prefix - try to migrate from DB or detect from issues
+				var detectedPrefix string
+
+				if dbPrefix != "" {
+					// Migrate from DB to config.yaml
+					detectedPrefix = dbPrefix
+				} else {
+					// Detect from existing issues
+					issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
+					if err == nil && len(issues) > 0 {
+						detectedPrefix = utils.ExtractIssuePrefix(issues[0].ID)
 					}
 				}
+
+				if detectedPrefix != "" {
+					if err := config.SetIssuePrefix(detectedPrefix); err != nil {
+						_ = store.Close()
+						if jsonOutput {
+							outputJSON(map[string]interface{}{
+								"error":   "prefix_migration_failed",
+								"message": err.Error(),
+							})
+						} else {
+							fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix in config.yaml: %v\n", err)
+						}
+						os.Exit(1)
+					}
+					if !jsonOutput {
+						if dbPrefix != "" {
+							color.Green("✓ Migrated issue prefix to config.yaml: %s\n", detectedPrefix)
+						} else {
+							color.Green("✓ Detected and set issue prefix: %s\n", detectedPrefix)
+						}
+					}
+				}
 			}
-		}
-			
+
 			if err := store.SetMetadata(ctx, "bd_version", Version); err != nil {
 				_ = store.Close()
 				if jsonOutput {
@@ -328,7 +328,7 @@ This command:
 				}
 				os.Exit(1)
 			}
-			
+
 			// Close and checkpoint to finalize the WAL
 			if err := store.Close(); err != nil {
 				if !jsonOutput {
@@ -379,13 +379,12 @@ This command:
 			}
 		}
 
-
 		// Migrate to hash IDs if requested
 		if toHashIDs {
 			if !jsonOutput {
 				fmt.Println("\n→ Migrating to hash-based IDs...")
 			}
-			
+
 			store, err := sqlite.New(targetPath)
 			if err != nil {
 				if jsonOutput {
@@ -398,12 +397,12 @@ This command:
 				}
 				os.Exit(1)
 			}
-			
+
 			ctx := context.Background()
 			issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
 			if err != nil {
-			_ = store.Close()
-			if jsonOutput {
+				_ = store.Close()
+				if jsonOutput {
 					outputJSON(map[string]interface{}{
 						"error":   "hash_migration_failed",
 						"message": err.Error(),
@@ -413,7 +412,7 @@ This command:
 				}
 				os.Exit(1)
 			}
-			
+
 			if len(issues) > 0 && !isHashID(issues[0].ID) {
 				// Create backup
 				if !dryRun {
@@ -433,11 +432,11 @@ This command:
 					if !jsonOutput {
 						color.Green("✓ Created backup: %s\n", filepath.Base(backupPath))
 					}
-					}
-					
-					mapping, err := migrateToHashIDs(ctx, store, issues, dryRun)
-					_ = store.Close()
-				
+				}
+
+				mapping, err := migrateToHashIDs(ctx, store, issues, dryRun)
+				_ = store.Close()
+
 				if err != nil {
 					if jsonOutput {
 						outputJSON(map[string]interface{}{
@@ -449,22 +448,22 @@ This command:
 					}
 					os.Exit(1)
 				}
-				
+
 				if !jsonOutput {
 					if dryRun {
 						fmt.Printf("\nWould migrate %d issues to hash-based IDs\n", len(mapping))
 					} else {
 						color.Green("✓ Migrated %d issues to hash-based IDs\n", len(mapping))
-						}
-						}
-						} else {
-						_ = store.Close()
+					}
+				}
+			} else {
+				_ = store.Close()
 				if !jsonOutput {
 					fmt.Println("Database already uses hash-based IDs")
 				}
 			}
 		}
-		
+
 		// Save updated config with current version (fixes GH #193)
 		if !dryRun {
 			if err := cfg.Save(beadsDir); err != nil {
@@ -474,7 +473,7 @@ This command:
 				// Don't fail migration if config save fails
 			}
 		}
-		
+
 		// Final status
 		if jsonOutput {
 			outputJSON(map[string]interface{}{
@@ -556,8 +555,6 @@ func getDBVersion(dbPath string) string {
 
 	return "unknown"
 }
-
-
 
 func formatDBList(dbs []*dbInfo) []map[string]string {
 	result := make([]map[string]string, len(dbs))
@@ -698,7 +695,7 @@ func loadOrCreateConfig(beadsDir string) (*configfile.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create default if no config exists
 	if cfg == nil {
 		cfg = configfile.DefaultConfig(Version)
@@ -706,7 +703,7 @@ func loadOrCreateConfig(beadsDir string) (*configfile.Config, error) {
 		// Update version field in existing config (fixes GH #193)
 		cfg.Version = Version
 	}
-	
+
 	return cfg, nil
 }
 
@@ -714,7 +711,7 @@ func loadOrCreateConfig(beadsDir string) (*configfile.Config, error) {
 func cleanupWALFiles(dbPath string) {
 	walPath := dbPath + "-wal"
 	shmPath := dbPath + "-shm"
-	
+
 	// Best effort - don't fail if these don't exist
 	_ = os.Remove(walPath)
 	_ = os.Remove(shmPath)
@@ -768,7 +765,7 @@ func handleInspect() {
 		}
 		os.Exit(1)
 	}
-	
+
 	// If database doesn't exist, return inspection with defaults
 	if !dbExists {
 		result := map[string]interface{}{
@@ -783,7 +780,7 @@ func handleInspect() {
 			"warnings":            []string{"Database does not exist - run 'bd init' first"},
 			"invariants_to_check": sqlite.GetInvariantNames(),
 		}
-		
+
 		if jsonOutput {
 			outputJSON(result)
 		} else {
@@ -839,7 +836,7 @@ func handleInspect() {
 
 	// Get registered migrations (all migrations are idempotent and run on every open)
 	registeredMigrations := sqlite.ListMigrations()
-	
+
 	// Build invariants list
 	invariantNames := sqlite.GetInvariantNames()
 
@@ -880,21 +877,21 @@ func handleInspect() {
 		fmt.Printf("Schema Version: %s\n", schemaVersion)
 		fmt.Printf("Issue Count: %d\n", issueCount)
 		fmt.Printf("Registered Migrations: %d\n", len(registeredMigrations))
-		
+
 		if len(warnings) > 0 {
 			fmt.Println("\nWarnings:")
 			for _, w := range warnings {
 				fmt.Printf("  ⚠ %s\n", w)
 			}
 		}
-		
+
 		if len(missingConfig) > 0 {
 			fmt.Println("\nMissing Config:")
 			for _, k := range missingConfig {
 				fmt.Printf("  - %s\n", k)
 			}
 		}
-		
+
 		fmt.Printf("\nInvariants to Check: %d\n", len(invariantNames))
 		for _, inv := range invariantNames {
 			fmt.Printf("  ✓ %s\n", inv)
