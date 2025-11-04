@@ -167,3 +167,72 @@ func AllSettings() map[string]interface{} {
 	}
 	return v.AllSettings()
 }
+
+// GetIssuePrefix returns the issue-prefix from config.yaml
+// This is the canonical source of truth for the project's issue prefix
+func GetIssuePrefix() string {
+	return GetString("issue-prefix")
+}
+
+// SetIssuePrefix updates the issue-prefix in config.yaml
+// This is the source of truth for the project's issue prefix
+// In environments without .beads directory, updates viper in-memory only
+func SetIssuePrefix(prefix string) error {
+	// Find the .beads directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	var beadsDir string
+	for dir := cwd; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, ".beads")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			beadsDir = candidate
+			break
+		}
+	}
+
+	if beadsDir == "" {
+		// No .beads directory found - update in-memory only (for tests)
+		Set("issue-prefix", prefix)
+		return nil
+	}
+
+	configPath := filepath.Join(beadsDir, "config.yaml")
+
+	// Read existing config or create new one
+	content := ""
+	if data, err := os.ReadFile(configPath); err == nil {
+		content = string(data)
+	}
+
+	// Update or add issue-prefix line
+	lines := strings.Split(content, "\n")
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "issue-prefix:") {
+			lines[i] = fmt.Sprintf("issue-prefix: %q", prefix)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Add issue-prefix to beginning of file
+		lines = append([]string{fmt.Sprintf("issue-prefix: %q", prefix), ""}, lines...)
+	}
+
+	content = strings.Join(lines, "\n")
+
+	// Write back to file
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write config.yaml: %w", err)
+	}
+
+	// Update in-memory config too
+	Set("issue-prefix", prefix)
+
+	return nil
+}

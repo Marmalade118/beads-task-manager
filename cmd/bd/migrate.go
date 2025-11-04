@@ -12,6 +12,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/beads"
+	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/configfile"
 	"github.com/steveyegge/beads/internal/storage/sqlite"
 	"github.com/steveyegge/beads/internal/types"
@@ -272,32 +273,48 @@ This command:
 
 			ctx := context.Background()
 			
-			// Detect and set issue_prefix if missing (fixes GH #201)
-			prefix, err := store.GetConfig(ctx, "issue_prefix")
-			if err != nil || prefix == "" {
-				// Get first issue to detect prefix
-				issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
-				if err == nil && len(issues) > 0 {
-					detectedPrefix := utils.ExtractIssuePrefix(issues[0].ID)
-					if detectedPrefix != "" {
-						if err := store.SetConfig(ctx, "issue_prefix", detectedPrefix); err != nil {
-							_ = store.Close()
-							if jsonOutput {
-								outputJSON(map[string]interface{}{
-									"error":   "prefix_detection_failed",
-									"message": err.Error(),
-								})
-							} else {
-								fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix: %v\n", err)
-							}
-							os.Exit(1)
-						}
-						if !jsonOutput {
-							color.Green("✓ Detected and set issue prefix: %s\n", detectedPrefix)
-						}
+			// Migrate issue_prefix from DB to config.yaml (fixes GH #201 + #209)
+			// Config.yaml is now the single source of truth
+			configPrefix := config.GetIssuePrefix()
+			dbPrefix, _ := store.GetConfig(ctx, "issue_prefix")
+			
+			if configPrefix == "" {
+			// config.yaml missing prefix - try to migrate from DB or detect from issues
+			var detectedPrefix string
+			
+			if dbPrefix != "" {
+			// Migrate from DB to config.yaml
+			detectedPrefix = dbPrefix
+			} else {
+			// Detect from existing issues
+			issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
+			if err == nil && len(issues) > 0 {
+			detectedPrefix = utils.ExtractIssuePrefix(issues[0].ID)
+			}
+			}
+			
+			if detectedPrefix != "" {
+			if err := config.SetIssuePrefix(detectedPrefix); err != nil {
+			_ = store.Close()
+			 if jsonOutput {
+			   outputJSON(map[string]interface{}{
+			     "error":   "prefix_migration_failed",
+							"message": err.Error(),
+						})
+					} else {
+						fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix in config.yaml: %v\n", err)
+					}
+					os.Exit(1)
+				}
+				if !jsonOutput {
+					if dbPrefix != "" {
+						color.Green("✓ Migrated issue prefix to config.yaml: %s\n", detectedPrefix)
+					} else {
+						color.Green("✓ Detected and set issue prefix: %s\n", detectedPrefix)
 					}
 				}
 			}
+		}
 			
 			if err := store.SetMetadata(ctx, "bd_version", Version); err != nil {
 				_ = store.Close()

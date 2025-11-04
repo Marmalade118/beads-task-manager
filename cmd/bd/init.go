@@ -181,17 +181,18 @@ bd.db
 		
 		store, err := sqlite.New(initDBPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to create database: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Set the issue prefix in config
-		ctx := context.Background()
-		if err := store.SetConfig(ctx, "issue_prefix", prefix); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix: %v\n", err)
-		_ = store.Close()
+		fmt.Fprintf(os.Stderr, "Error: failed to create database: %v\n", err)
 		os.Exit(1)
 		}
+
+		// Set the issue prefix in config.yaml (source of truth - fixes GH #209)
+		if err := config.SetIssuePrefix(prefix); err != nil {
+		 fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix in config.yaml: %v\n", err)
+		 _ = store.Close()
+		 os.Exit(1)
+		}
+
+	ctx := context.Background()
 
 	// Set sync.branch if specified
 	if branch != "" {

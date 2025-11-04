@@ -63,6 +63,16 @@ func New(path string) (*SQLiteStorage, error) {
 		return nil, err
 	}
 
+	// Auto-migrate issue_prefix from DB to config.yaml (GH #209)
+	// This ensures backward compatibility for users upgrading from pre-0.21 versions
+	ctx := context.Background()
+	if err := MigrateConfigToYAML(ctx, db); err != nil {
+		// Log warning but don't fail - might be test environment
+		if os.Getenv("BD_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "Warning: config migration failed: %v\n", err)
+		}
+	}
+
 	// Convert to absolute path for consistency (but keep :memory: as-is)
 	absPath := path
 	if path != ":memory:" {
