@@ -12,11 +12,28 @@ import (
 
 	"github.com/steveyegge/beads"
 	"github.com/steveyegge/beads/internal/storage"
+	"github.com/steveyegge/beads/internal/storage/sqlite"
 	"github.com/steveyegge/beads/internal/types"
 )
 
-// exportToJSONLWithStore exports issues to JSONL using the provided store
+// exportToJSONLWithStore exports issues to JSONL using the provided store.
+// If multi-repo mode is configured, routes issues to their respective JSONL files.
+// Otherwise, exports to a single JSONL file.
 func exportToJSONLWithStore(ctx context.Context, store storage.Storage, jsonlPath string) error {
+	// Try multi-repo export first
+	sqliteStore, ok := store.(*sqlite.SQLiteStorage)
+	if ok {
+		results, err := sqliteStore.ExportToMultiRepo(ctx)
+		if err != nil {
+			return fmt.Errorf("multi-repo export failed: %w", err)
+		}
+		if results != nil {
+			// Multi-repo mode active - export succeeded
+			return nil
+		}
+	}
+
+	// Single-repo mode - use existing logic
 	// Get all issues
 	issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
 	if err != nil {
@@ -120,6 +137,20 @@ func exportToJSONLWithStore(ctx context.Context, store storage.Storage, jsonlPat
 
 // importToJSONLWithStore imports issues from JSONL using the provided store
 func importToJSONLWithStore(ctx context.Context, store storage.Storage, jsonlPath string) error {
+	// Try multi-repo import first
+	sqliteStore, ok := store.(*sqlite.SQLiteStorage)
+	if ok {
+		results, err := sqliteStore.HydrateFromMultiRepo(ctx)
+		if err != nil {
+			return fmt.Errorf("multi-repo import failed: %w", err)
+		}
+		if results != nil {
+			// Multi-repo mode active - import succeeded
+			return nil
+		}
+	}
+
+	// Single-repo mode - use existing logic
 	// Read JSONL file
 	file, err := os.Open(jsonlPath) // #nosec G304 - controlled path from config
 	if err != nil {
